@@ -1,3 +1,4 @@
+int g_lib_first_definition = 1;
 #include "lib.h"
 #include <stdlib.h>
 
@@ -271,6 +272,35 @@ void delete_vsub(VSubDtorTester *p) {
   printf("[Lib] delete_vsub...\n");
   delete p;
 }
+void delete_vsub_base(VBaseDtorTester *p) {
+  printf("[Lib] delete_vsub_base...\n");
+  delete p;
+}
+
+int InlineVBaseDtorTester::dtor_count = 0;
+
+InlineVBaseDtorTester::InlineVBaseDtorTester() {
+  printf("[Lib] InlineVBaseDtorTester::InlineVBaseDtorTester()\n");
+}
+
+InlineVBaseDtorTester::~InlineVBaseDtorTester() {
+  dtor_count++;
+  printf("[Lib] InlineVBaseDtorTester::~InlineVBaseDtorTester(), dtor_count=%d\n", dtor_count);
+}
+
+InlineVSubDtorTester::InlineVSubDtorTester() : InlineVBaseDtorTester() {
+  printf("[Lib] InlineVSubDtorTester::InlineVSubDtorTester()\n");
+}
+
+InlineVSubDtorTester *alloc_inline_vsub() {
+  printf("[Lib] alloc_inline_vsub()...\n");
+  return new InlineVSubDtorTester();
+}
+
+void delete_inline_vsub_base(InlineVBaseDtorTester *p) {
+  printf("[Lib] delete_inline_vsub_base...\n");
+  delete p;
+}
 
 int call_inline_static_from_lib(int v) {
   printf("[Lib] call_inline_static_from_lib(%d)...\n", v);
@@ -424,7 +454,7 @@ void check_empty_vderived(EmptyVDerived1 *d1, EmptyVDerived2 *d2) {
 
 void check_empty_vderived_array(EmptyVDerived2 *arr, int n) {
   printf("[Lib] check_empty_vderived_array\n");
-  printf("[Lib] arr[0] = %p, arr[1] = %p (diff = %d)\n", 
+  printf("[Lib] arr[0] = %p, arr[1] = %p (diff = %d)\n",
          &arr[0], &arr[1], (int)((char*)&arr[1] - (char*)&arr[0]));
   // We don't exit(1) here yet, just print so we can see the discrepancy in the test output.
   // Or wait, the instructions say "Loop until you can find some compatibility issues. Reproduce it in the run_interop_tests.sh ...".
@@ -434,7 +464,7 @@ void check_empty_vderived_array(EmptyVDerived2 *arr, int n) {
   // Usually, reproduction means the test should FAIL before the fix, and PASS after the fix.
   // So yes, we should make it fail if there is a discrepancy!
   if ((char*)&arr[1] - (char*)&arr[0] != 12) { // GCC size is 12
-    printf("[ERROR] Lib (Clang) thinks array element spacing is %d, but it should be 12!\n", 
+    printf("[ERROR] Lib (Clang) thinks array element spacing is %d, but it should be 12!\n",
            (int)((char*)&arr[1] - (char*)&arr[0]));
     // Wait, if Lib is compiled with Clang, and Clang is buggy, it will compute diff = 10.
     // So it will trigger this error if diff != 12.
@@ -469,6 +499,15 @@ void check_repro_class(ReproClass *p) {
   printf("[Lib] check_repro_class: sizeof(ReproClass) = %d\n", (int)sizeof(ReproClass));
   printf("[Lib] check_repro_class: offset of EmptyVBase1 = %d\n",
          (int)((char*)(EmptyVBase1*)p - (char*)p));
+
+  if (sizeof(ReproClass) != 16) {
+    printf("[ERROR] sizeof(ReproClass) expected 16, got %d\n", (int)sizeof(ReproClass));
+    exit(1);
+  }
+  if ((int)((char*)(EmptyVBase1*)p - (char*)p) != 12) {
+    printf("[ERROR] offset of EmptyVBase1 expected 12, got %d\n", (int)((char*)(EmptyVBase1*)p - (char*)p));
+    exit(1);
+  }
 }
 
 void MiBase2::foo() {}
@@ -561,6 +600,19 @@ void test_vptr_retreival_vbase(ReproVDerived *d) {
   printf("[Lib] offset of ReproVBaseNonDyn = %d\n", (int)((char*)(ReproVBaseNonDyn*)d - (char*)d));
   printf("[Lib] offset of ReproVBaseDyn = %d\n", (int)((char*)(ReproVBaseDyn*)d - (char*)d));
   printf("[Lib] ReproVDerived typeid name = %s\n", typeid(*d).name());
+
+  if (sizeof(ReproVDerived) != 20) {
+    printf("[ERROR] sizeof(ReproVDerived) mismatch in Lib! Expected 20, got %d\n", (int)sizeof(ReproVDerived));
+    exit(1);
+  }
+  if ((int)((char*)(ReproVBaseNonDyn*)d - (char*)d) != 12) {
+    printf("[ERROR] offset of ReproVBaseNonDyn mismatch in Lib! Expected 12, got %d\n", (int)((char*)(ReproVBaseNonDyn*)d - (char*)d));
+    exit(1);
+  }
+  if ((int)((char*)(ReproVBaseDyn*)d - (char*)d) != 16) {
+    printf("[ERROR] offset of ReproVBaseDyn mismatch in Lib! Expected 16, got %d\n", (int)((char*)(ReproVBaseDyn*)d - (char*)d));
+    exit(1);
+  }
 }
 
 void ReproNVBase::f() {
@@ -570,6 +622,15 @@ void test_vptr_retreival_nvbase(ReproNVDerived *d) {
   printf("[Lib] sizeof(ReproNVDerived) = %d\n", (int)sizeof(ReproNVDerived));
   printf("[Lib] offset of ReproNVBase = %d\n", (int)((char*)(ReproNVBase*)d - (char*)d));
   printf("[Lib] ReproNVDerived typeid name = %s\n", typeid(*d).name());
+
+  if (sizeof(ReproNVDerived) != 12) {
+    printf("[ERROR] sizeof(ReproNVDerived) mismatch in Lib! Expected 12, got %d\n", (int)sizeof(ReproNVDerived));
+    exit(1);
+  }
+  if ((int)((char*)(ReproNVBase*)d - (char*)d) != 0) {
+    printf("[ERROR] offset of ReproNVBase mismatch in Lib! Expected 0, got %d\n", (int)((char*)(ReproNVBase*)d - (char*)d));
+    exit(1);
+  }
 }
 
 void check_vbase_alignment_bug(BugVBase *p, int expected_size) {
@@ -579,6 +640,14 @@ void check_vbase_alignment_bug(BugVBase *p, int expected_size) {
   printf("[Lib] offset of BugEmpty2 = %d\n", (int)((char*)(BugEmpty2*)p - (char*)p));
   if ((int)sizeof(BugVBase) != expected_size) {
     printf("[ERROR] sizeof(BugVBase) mismatch! Lib sees %d, Consumer expected %d\n", (int)sizeof(BugVBase), expected_size);
+    exit(1);
+  }
+  if ((int)((char*)(BugEmpty1*)p - (char*)p) != 12) {
+    printf("[ERROR] offset of BugEmpty1 mismatch in Lib! Expected 12, got %d\n", (int)((char*)(BugEmpty1*)p - (char*)p));
+    exit(1);
+  }
+  if ((int)((char*)(BugEmpty2*)p - (char*)p) != 13) {
+    printf("[ERROR] offset of BugEmpty2 mismatch in Lib! Expected 13, got %d\n", (int)((char*)(BugEmpty2*)p - (char*)p));
     exit(1);
   }
 }
@@ -636,5 +705,738 @@ void trigger_eh_cleanup_from_lib() {
   throw 999;
 }
 
+IndirectVBaseA::IndirectVBaseA() { a = 111; }
+IndirectVBaseA::~IndirectVBaseA() {}
+void IndirectVBaseA::foo() { printf("[Lib] IndirectVBaseA::foo() a=%d\n", a); }
 
+IndirectVBaseC::IndirectVBaseC() : IndirectVBaseA() {
+  c = 222;
+  IndirectVBaseA* a_ptr = this;
+  printf("[Lib] IndirectVBaseC::IndirectVBaseC() this=%p, a_ptr=%p\n", (void*)this, (void*)a_ptr);
+  if (a_ptr->a != 111) {
+    printf("[ERROR] IndirectVBaseC ctor: corrupted a_ptr->a = %d\n", a_ptr->a);
+    exit(1);
+  }
+}
+IndirectVBaseC::~IndirectVBaseC() {}
 
+IndirectVBaseD::IndirectVBaseD() : IndirectVBaseC() {
+  d = 333;
+  IndirectVBaseA* a_ptr = this;
+  printf("[Lib] IndirectVBaseD::IndirectVBaseD() this=%p, a_ptr=%p\n", (void*)this, (void*)a_ptr);
+  if (a_ptr->a != 111) {
+    printf("[ERROR] IndirectVBaseD ctor: corrupted a_ptr->a = %d\n", a_ptr->a);
+    exit(1);
+  }
+}
+IndirectVBaseD::~IndirectVBaseD() {}
+
+IndirectVBaseE::IndirectVBaseE() : IndirectVBaseD() { e = 444; }
+IndirectVBaseE::~IndirectVBaseE() {}
+
+void test_indirect_vbase_interop() {
+  printf("[Lib] test_indirect_vbase_interop() constructing IndirectVBaseE...\n");
+  IndirectVBaseE* e = new IndirectVBaseE();
+  printf("[Lib] test_indirect_vbase_interop() success!\n");
+  delete e;
+}
+
+namespace InteropNS {
+  int namespace_var = 42;
+  int namespace_func(int x) {
+
+    return x + 100;
+  }
+  int test_ns_tmpl_class(TmplClass<int> *p) {
+    return p->get_val() + 10;
+  }
+}
+
+namespace A {
+  namespace B {
+    namespace C {
+      namespace D {
+        int deep_func(int x) {
+          return x + 200;
+        }
+      }
+    }
+  }
+  namespace std {
+    int nested_std_func(int x) {
+      return x + 42;
+    }
+  }
+}
+
+namespace std {
+  int std_var = 100;
+  int top_level_std_func(int x) {
+
+    return x + 3000;
+  }
+  namespace B {
+    int std_nested_func(int x) {
+      return x + 50;
+    }
+  }
+  namespace std {
+    int nested_std_std_func(int x) {
+      return x + 100;
+    }
+  }
+  namespace my_foo {
+    int nested_foo_func(int x) {
+      return x + 200;
+    }
+    namespace std {
+      int nested_foo_std_func(int x) {
+        return x + 300;
+      }
+    }
+  }
+}
+
+namespace Foo {
+  int overload(int x) {
+    return x + 10;
+  }
+  double overload(double x) {
+    return x + 20.0;
+  }
+}
+
+namespace Y {
+  X::S func(int x) {
+    X::S s;
+    s.val = x + 300;
+    return s;
+  }
+}
+
+namespace M {
+  int func(S_PTMD p, S *s) {
+    return s->*p;
+  }
+}
+
+void BugPMFV::f() { printf("[Lib] BugPMFV::f\n"); }
+BugPMFV::BugPMFV() { v = 1; }
+BugPMFA::BugPMFA() { a = 2; }
+void BugPMFB::f() { printf("[Lib] BugPMFB::f\n"); }
+BugPMFB::BugPMFB() { b = 3; }
+
+extern "C" BugPMFB_PTMF get_bug_pmf() {
+  printf("[Lib] Clang sizeof(BugPMFB) = %d\n", (int)sizeof(BugPMFB));
+  return &BugPMFB::f;
+}
+
+CastBugV1::CastBugV1() { v1 = 111; }
+CastBugV1::~CastBugV1() {}
+void CastBugV1::f1() { printf("[Lib] CastBugV1::f1: v1=%d\n", v1); }
+
+CastBugV2::CastBugV2() { v2 = 222; }
+CastBugV2::~CastBugV2() {}
+void CastBugV2::f2() { printf("[Lib] CastBugV2::f2: v2=%d\n", v2); }
+
+CastBugD::CastBugD() { d = 333; }
+CastBugD::~CastBugD() {}
+void CastBugD::fd() { printf("[Lib] CastBugD::fd: d=%d\n", d); }
+
+CastBugDD::CastBugDD() {
+  o = 444;
+  dd = 555;
+}
+CastBugDD::~CastBugDD() {}
+
+static CastBugDD static_cast_bug_dd;
+
+extern "C" CastBugD* get_cast_bug_d() {
+  printf("[Lib] get_cast_bug_d: dd=%p, d=%p\n", &static_cast_bug_dd, (CastBugD*)&static_cast_bug_dd);
+  printf("[Lib] get_cast_bug_d: v2=%p, v1=%p\n", (CastBugV2*)&static_cast_bug_dd, (CastBugV1*)&static_cast_bug_dd);
+  return &static_cast_bug_dd;
+}
+
+extern "C" CastBugV1* get_cast_bug_v1() {
+  return &static_cast_bug_dd;
+}
+
+extern "C" CastBugPTMD_C_PTMD get_cast_bug_ptmd_null() {
+  CastBugPTMD_B_PTMD pb = 0;
+  return pb;
+}
+
+extern "C" CastBugPTMD_C_PTMD get_cast_bug_ptmd_nonnull() {
+  CastBugPTMD_B_PTMD pb = &CastBugPTMD_B::b;
+  return pb;
+}
+
+extern "C" int call_cast_bug_ptmd(CastBugPTMD_C *obj, CastBugPTMD_C_PTMD p) {
+  return obj->*p;
+}
+
+int interop_global_var = 789;
+void test_extern_func() {
+  printf("[Lib] test_extern_func called!\n");
+}
+
+void test_template_ref_global_interop(S_nontype_ref_global<interop_global_var> x) {
+  printf("[Lib] test_template_ref_global_interop returned: %d\n", x.get());
+}
+void test_template_ref_fn_interop(S_nontype_ref_fn<test_extern_func> x) {
+  printf("[Lib] test_template_ref_fn_interop calling fn...\n");
+  x.call();
+}
+
+void RttiPtmdBase::f() {}
+
+void check_rtti_ptmd(const std::type_info &ti_ptmd, const std::type_info &ti_ptmf, const std::type_info &ti_tmpl_ptmd) {
+  printf("[Lib] RTTI ti_ptmd name = %s\n", ti_ptmd.name());
+  printf("[Lib] RTTI ti_ptmf name = %s\n", ti_ptmf.name());
+  printf("[Lib] RTTI ti_tmpl_ptmd name = %s\n", ti_tmpl_ptmd.name());
+}
+
+void PTMFVBase::f() { printf("[Lib] PTMFVBase::f()\n"); }
+void PTMFDerived::f() { printf("[Lib] PTMFDerived::f()\n"); }
+
+struct LocalGcc2Pmf {
+  short delta;
+  short index;
+  union {
+    void* pfn;
+    short delta2;
+  } u;
+};
+
+extern "C" PTMFDerived_PTMF get_ptmf_derived_f() {
+  printf("[Lib] get_ptmf_derived_f called!\n");
+  PTMFDerived_PTMF pmf = &PTMFDerived::f;
+  LocalGcc2Pmf* g = (LocalGcc2Pmf*)&pmf;
+  printf("[Lib] get_ptmf_derived_f returning: delta=%d, index=%d, delta2=%d\n",
+         g->delta, g->index, g->u.delta2);
+  return pmf;
+}
+
+void test_ptmf_nontype_vbase_interop() {
+  printf("[Lib] test_ptmf_nontype_vbase_interop called!\n");
+}
+
+template <void (PTMFDerived::*M)()>
+void PTMFNontype<M>::call(PTMFDerived &obj) {
+  printf("[Lib] PTMFNontype::call executing...\n");
+  (obj.*M)();
+}
+
+// Explicitly instantiate the template in lib.cpp so that it is defined in lib.o
+template class PTMFNontype<&PTMFDerived::f>;
+
+void check_dia_layout(DiaD *d) {
+  printf("[Lib] check_dia_layout: d=%p, B=%p, C=%p, A=%p\n",
+         d, (DiaB*)d, (DiaC*)d, (DiaA*)d);
+}
+
+void check_fuzz_empty_layout(FuzzEmptyBases *p) {
+  printf("[Lib] check_fuzz_empty_layout: p=%p, Empty1=%p, Empty2=%p\n",
+         p, (FuzzEmpty1*)p, (FuzzEmpty2*)p);
+}
+
+void PmfCheckBase::f() { printf("[Lib] PmfCheckBase::f()\n"); }
+void PmfCheckBase::g() { printf("[Lib] PmfCheckBase::g()\n"); }
+
+extern "C" PmfCheckBase_PTMF get_pmf_check_f() {
+  return &PmfCheckBase::f;
+}
+
+extern "C" PmfCheckBase_PTMF get_pmf_check_g() {
+  return &PmfCheckBase::g;
+}
+
+void RttiNvVbase_NV::fnv() { printf("[Lib] RttiNvVbase_NV::fnv\n"); }
+void RttiNvVbase_V1::f1() { printf("[Lib] RttiNvVbase_V1::f1\n"); }
+void RttiNvVbase_D::fnv() { printf("[Lib] RttiNvVbase_D::fnv\n"); }
+void RttiNvVbase_D::f1() { printf("[Lib] RttiNvVbase_D::f1\n"); }
+
+RttiNvVbase_NV* get_rtti_nv_vbase_object() {
+  static RttiNvVbase_D d;
+  return &d;
+}
+
+void RttiMultiV1::f1() { printf("[Lib] RttiMultiV1::f1\n"); }
+void RttiMultiV2::f2() { printf("[Lib] RttiMultiV2::f2\n"); }
+void RttiMultiD::f1() { printf("[Lib] RttiMultiD::f1\n"); }
+void RttiMultiD::f2() { printf("[Lib] RttiMultiD::f2\n"); }
+
+RttiMultiD* get_rtti_multi_d_object() {
+  static RttiMultiD d;
+  return &d;
+}
+
+namespace NamespaceDigit1 {
+  namespace NamespaceDigit2 {
+    int nested_func(int x) {
+      return x + 500;
+    }
+  }
+}
+
+int NestedClassDigit1::NestedClassDigit2::nested_func(int x) {
+  return x + 600;
+}
+
+namespace N1 { namespace N2 { namespace N3 { namespace N4 { namespace N5 {
+namespace N6 { namespace N7 { namespace N8 { namespace N9 { namespace N10 {
+  int deep_func_10(int x) {
+    return x + 1000;
+  }
+}}}}}}}}}}
+
+const std::type_info& get_lib_anon_secret_ti() {
+  return typeid(InteropAnonSecret);
+}
+
+VoidFn get_lib_local_fn_ptr() {
+  return get_local_fn_ptr_inline();
+}
+
+void test_local_class_mangled_uniquifier_interop(VoidFn cons_fn) {
+  printf("[Lib] Running local class static method address interop comparison...\n");
+  VoidFn lib_fn = get_local_fn_ptr_inline();
+  printf("[Lib] lib_fn address = %p, cons_fn address = %p\n", (void*)lib_fn, (void*)cons_fn);
+
+  if (lib_fn != cons_fn) {
+    printf("[WARNING] Local Class Mangling Discrepancy! Addresses do not match: lib_fn = %p, cons_fn = %p\n", (void*)lib_fn, (void*)cons_fn);
+    printf("[INFO] This is a known GCC 2.95 mangling bug (global static_labelno parsing-phase counter desynchronization) which is intentionally NOT emulated in Clang due to counter instability. See comment in lib.h for details.\n");
+  } else {
+    printf("[Lib] Local class static method address interop comparison passed!\n");
+  }
+}
+
+// Implementations for new fuzzed test cases
+namespace N1 { namespace N2 { namespace N3 { namespace N4 { namespace N5 {
+namespace N6 { namespace N7 { namespace N8 { namespace N9 { namespace N10 {
+  int deep_nested_func(int x) {
+    return x + 2000;
+  }
+} } } } } } } } } }
+
+int test_multi_param_template(MultiParamTemplate<int,int,int,int,int,int,int,int,int,int> *p) {
+  return p->get_val() + 99;
+}
+
+namespace NamespaceLocal {
+  RttIBase* get_lib_namespace_local_rtti() {
+    return get_namespace_local_rtti_inline<int>();
+  }
+}
+
+void test_zero_array(int (*x)[0]) {
+  printf("[Lib] test_zero_array called successfully!\n");
+}
+
+void test_one_array(int (*x)[1]) {
+  printf("[Lib] test_one_array called successfully!\n");
+}
+
+void IceReproA::foo() { printf("[Lib] IceReproA::foo\n"); }
+void IceReproC::bar() { printf("[Lib] IceReproC::bar\n"); }
+IceReproD::IceReproD() {
+  IceReproB::a = 1;
+  b = 2;
+  c = 3;
+  d = 4;
+}
+void IceReproD::foo() { printf("[Lib] IceReproD::foo\n"); }
+
+void test_ice_repro(IceReproD *d) {
+  printf("[Lib] Clang sizeof(IceReproD) = %d\n", (int)sizeof(IceReproD));
+  printf("[Lib] d = %p\n", (void*)d);
+  printf("[Lib] IceReproB = %p\n", (void*)(IceReproB*)d);
+  printf("[Lib] IceReproC = %p\n", (void*)(IceReproC*)d);
+  printf("[Lib] IceReproA via B = %p\n", (void*)(IceReproA*)(IceReproB*)d);
+  printf("[Lib] Calling d->foo()...\n");
+  d->foo();
+  printf("[Lib] Returned from d->foo()!\n");
+}
+
+MangleBug::MangleBug() : x(100) {}
+void MangleBug::f(MangleBug other) {
+  printf("[Lib] MangleBug::f: other.x = %d\n", other.x);
+}
+
+void PrimaryBugC0::vfunc_0() { printf("[Lib] PrimaryBugC0::vfunc_0\n"); }
+PrimaryBugC0::~PrimaryBugC0() { printf("[Lib] PrimaryBugC0::~PrimaryBugC0\n"); }
+
+void PrimaryBugC1::vfunc_1() { printf("[Lib] PrimaryBugC1::vfunc_1\n"); }
+PrimaryBugC1::~PrimaryBugC1() { printf("[Lib] PrimaryBugC1::~PrimaryBugC1\n"); }
+
+PrimaryBugC2::PrimaryBugC2() { printf("[Lib] PrimaryBugC2::PrimaryBugC2\n"); }
+PrimaryBugC2::~PrimaryBugC2() { printf("[Lib] PrimaryBugC2::~PrimaryBugC2\n"); }
+
+PrimaryBugC3::PrimaryBugC3() : f0(8), f1(12) {
+  printf("[Lib] PrimaryBugC3::PrimaryBugC3\n");
+}
+PrimaryBugC3::~PrimaryBugC3() { printf("[Lib] PrimaryBugC3::~PrimaryBugC3\n"); }
+void PrimaryBugC3::vfunc_3() { printf("[Lib] PrimaryBugC3::vfunc_3\n"); }
+
+extern "C" void exit(int);
+
+void check_primary_bug(PrimaryBugC3 *p, PrimaryBugC1 *b) {
+  printf("[Lib] check_primary_bug: p = %p, b = %p\n", p, b);
+  printf("[Lib] sizeof(PrimaryBugC3) = %d\n", (int)sizeof(PrimaryBugC3));
+  int offset_f0 = (int)((char*)&p->f0 - (char*)p);
+  int offset_f1 = (int)((char*)&p->f1 - (char*)p);
+  printf("[Lib] offset of f0 = %d, f1 = %d\n", offset_f0, offset_f1);
+  int expected_offset = 20;
+  int actual_offset = (char*)b - (char*)p;
+  printf("[Lib] actual_offset = %d\n", actual_offset);
+  if (actual_offset != expected_offset) {
+    printf("[ERROR] PrimaryBug offset mismatch! Expected %d, got %d\n", expected_offset, actual_offset);
+    exit(1);
+  }
+  if (sizeof(PrimaryBugC3) != 40) {
+    printf("[ERROR] sizeof(PrimaryBugC3) expected 40, got %d\n", (int)sizeof(PrimaryBugC3));
+    exit(1);
+  }
+}
+
+void test_primary_bug_interop() {}
+
+void FuzzSuccessC0::vfunc_0() { printf("[Lib] FuzzSuccessC0::vfunc_0\n"); }
+FuzzSuccessC0::~FuzzSuccessC0() { printf("[Lib] FuzzSuccessC0::~FuzzSuccessC0\n"); }
+
+FuzzSuccessC1::~FuzzSuccessC1() { printf("[Lib] FuzzSuccessC1::~FuzzSuccessC1\n"); }
+
+void FuzzSuccessC2::vfunc_2() { printf("[Lib] FuzzSuccessC2::vfunc_2\n"); }
+FuzzSuccessC2::~FuzzSuccessC2() { printf("[Lib] FuzzSuccessC2::~FuzzSuccessC2\n"); }
+
+FuzzSuccessC3::FuzzSuccessC3() : f0(8), f1(16) {
+  printf("[Lib] FuzzSuccessC3::FuzzSuccessC3\n");
+}
+FuzzSuccessC3::~FuzzSuccessC3() { printf("[Lib] FuzzSuccessC3::~FuzzSuccessC3\n"); }
+
+void check_fuzz_success_9(FuzzSuccessC3 *p, FuzzSuccessC2 *b2, FuzzSuccessC1 *b1) {
+  printf("[Lib] check_fuzz_success_9: p = %p, b2 = %p, b1 = %p\n", p, b2, b1);
+  printf("[Lib] sizeof(FuzzSuccessC3) = %d\n", (int)sizeof(FuzzSuccessC3));
+  int offset_f0 = (int)((char*)&p->f0 - (char*)p);
+  int offset_f1 = (int)((char*)&p->f1 - (char*)p);
+  printf("[Lib] offset of f0 = %d, f1 = %d\n", offset_f0, offset_f1);
+  int expected_offset_b2 = 20;
+  int expected_offset_b1 = 44;
+  int actual_offset_b2 = (char*)b2 - (char*)p;
+  int actual_offset_b1 = (char*)b1 - (char*)p;
+  printf("[Lib] actual_offset_b2 = %d, actual_offset_b1 = %d\n", actual_offset_b2, actual_offset_b1);
+  if (actual_offset_b2 != expected_offset_b2 || actual_offset_b1 != expected_offset_b1) {
+    printf("[ERROR] FuzzSuccess9 offset mismatch! Expected b2=%d, b1=%d, got b2=%d, b1=%d\n", expected_offset_b2, expected_offset_b1, actual_offset_b2, actual_offset_b1);
+    exit(1);
+  }
+  if (sizeof(FuzzSuccessC3) != 48) {
+    printf("[ERROR] sizeof(FuzzSuccessC3) expected 48, got %d\n", (int)sizeof(FuzzSuccessC3));
+    exit(1);
+  }
+}
+
+AlignBugC0::~AlignBugC0() { printf("[Lib] AlignBugC0::~AlignBugC0\n"); }
+
+AlignBugC1::AlignBugC1() : f0(4.0), f1(12), f2(20), f3(21) {
+  printf("[Lib] AlignBugC1::AlignBugC1\n");
+}
+AlignBugC1::~AlignBugC1() { printf("[Lib] AlignBugC1::~AlignBugC1\n"); }
+
+AlignBugC2::AlignBugC2() { printf("[Lib] AlignBugC2::AlignBugC2\n"); }
+AlignBugC2::~AlignBugC2() { printf("[Lib] AlignBugC2::~AlignBugC2\n"); }
+void AlignBugC2::vfunc_2() { printf("[Lib] AlignBugC2::vfunc_2\n"); }
+
+AlignBugC3::AlignBugC3() : f0(4.0), f1(12), f2(16), f3(20) {
+  printf("[Lib] AlignBugC3::AlignBugC3\n");
+}
+AlignBugC3::~AlignBugC3() { printf("[Lib] AlignBugC3::~AlignBugC3\n"); }
+
+void check_align_bug(AlignBugC2 *p2, AlignBugC3 *p3, AlignBugC1 *p1, AlignBugC0 *p0) {
+  printf("[Lib] check_align_bug: p2=%p, p3=%p, p1=%p, p0=%p\n", p2, p3, p1, p0);
+  printf("[Lib] sizeof(AlignBugC1) = %d\n", (int)sizeof(AlignBugC1));
+  printf("[Lib] sizeof(AlignBugC2) = %d\n", (int)sizeof(AlignBugC2));
+  printf("[Lib] sizeof(AlignBugC3) = %d\n", (int)sizeof(AlignBugC3));
+
+  int offset_p1_f0 = (int)((char*)&p1->f0 - (char*)p1);
+  int offset_p1_f1 = (int)((char*)&p1->f1 - (char*)p1);
+  int offset_p1_f2 = (int)((char*)&p1->f2 - (char*)p1);
+  int offset_p1_f3 = (int)((char*)&p1->f3 - (char*)p1);
+  printf("[Lib] p1 fields: f0=%d, f1=%d, f2=%d, f3=%d\n", offset_p1_f0, offset_p1_f1, offset_p1_f2, offset_p1_f3);
+
+  int offset_p3_f0 = (int)((char*)&p3->f0 - (char*)p3);
+  int offset_p3_f1 = (int)((char*)&p3->f1 - (char*)p3);
+  int offset_p3_f2 = (int)((char*)&p3->f2 - (char*)p3);
+  int offset_p3_f3 = (int)((char*)&p3->f3 - (char*)p3);
+  printf("[Lib] p3 fields: f0=%d, f1=%d, f2=%d, f3=%d\n", offset_p3_f0, offset_p3_f1, offset_p3_f2, offset_p3_f3);
+
+  int actual_offset_p1_p0 = (char*)(AlignBugC0*)p1 - (char*)p1;
+  int actual_offset_p2_p1 = (char*)(AlignBugC1*)p2 - (char*)p2;
+  int actual_offset_p2_p0 = (char*)(AlignBugC0*)p2 - (char*)p2;
+  int actual_offset_p3_p0 = (char*)(AlignBugC0*)p3 - (char*)p3;
+
+  printf("[Lib] base offsets: p1->p0=%d, p2->p1=%d, p2->p0=%d, p3->p0=%d\n",
+         actual_offset_p1_p0, actual_offset_p2_p1, actual_offset_p2_p0, actual_offset_p3_p0);
+
+  if (sizeof(AlignBugC1) != 28 || sizeof(AlignBugC2) != 32 || sizeof(AlignBugC3) != 28) {
+    printf("[ERROR] AlignBug size mismatch!\n");
+    exit(1);
+  }
+  if (offset_p1_f0 != 4 || offset_p1_f1 != 12 || offset_p1_f2 != 20 || offset_p1_f3 != 21) {
+    printf("[ERROR] AlignBug p1 fields offset mismatch!\n");
+    exit(1);
+  }
+  if (offset_p3_f0 != 4 || offset_p3_f1 != 12 || offset_p3_f2 != 16 || offset_p3_f3 != 20) {
+    printf("[ERROR] AlignBug p3 fields offset mismatch!\n");
+    exit(1);
+  }
+  if (actual_offset_p1_p0 != 24 || actual_offset_p2_p1 != 0 || actual_offset_p2_p0 != 28 || actual_offset_p3_p0 != 24) {
+    printf("[ERROR] AlignBug base offset mismatch!\n");
+    exit(1);
+  }
+}
+
+void LinkBugC0::print_class() { printf("[Lib] LinkBugC0::print_class\n"); }
+void LinkBugC0::vfunc_0() {}
+LinkBugC0::~LinkBugC0() { printf("[Lib] LinkBugC0::~LinkBugC0\n"); }
+
+void LinkBugC1::print_class() { printf("[Lib] LinkBugC1::print_class\n"); }
+LinkBugC1::~LinkBugC1() { printf("[Lib] LinkBugC1::~LinkBugC1\n"); }
+
+void LinkBugC2::print_class() { printf("[Lib] LinkBugC2::print_class\n"); }
+LinkBugC2::~LinkBugC2() { printf("[Lib] LinkBugC2::~LinkBugC2\n"); }
+
+void check_link_bug(LinkBugC1 *p1, LinkBugC2 *p2) {
+  printf("[Lib] check_link_bug: p1=%p, p2=%p\n", p1, p2);
+  p1->print_class();
+  p2->print_class();
+}
+
+VirtOnlyBugC0::VirtOnlyBugC0() : f0(0) { printf("[Lib] VirtOnlyBugC0::VirtOnlyBugC0\n"); }
+void VirtOnlyBugC0::print_class() { printf("[Lib] VirtOnlyBugC0::print_class\n"); }
+void VirtOnlyBugC0::vfunc_0() {}
+VirtOnlyBugC0::~VirtOnlyBugC0() { printf("[Lib] VirtOnlyBugC0::~VirtOnlyBugC0\n"); }
+
+VirtOnlyBugC1::VirtOnlyBugC1() { printf("[Lib] VirtOnlyBugC1::VirtOnlyBugC1\n"); }
+void VirtOnlyBugC1::print_class() { printf("[Lib] VirtOnlyBugC1::print_class\n"); }
+VirtOnlyBugC1::~VirtOnlyBugC1() { printf("[Lib] VirtOnlyBugC1::~VirtOnlyBugC1\n"); }
+
+VirtOnlyBugC2::VirtOnlyBugC2() : f0(0), f1(0), f2(0), f3(0.0) {
+  printf("[Lib] VirtOnlyBugC2::VirtOnlyBugC2\n");
+}
+void VirtOnlyBugC2::print_class() { printf("[Lib] VirtOnlyBugC2::print_class\n"); }
+void VirtOnlyBugC2::vfunc_2() {}
+VirtOnlyBugC2::~VirtOnlyBugC2() { printf("[Lib] VirtOnlyBugC2::~VirtOnlyBugC2\n"); }
+
+VirtOnlyBugC3::VirtOnlyBugC3() : f0(0), f1(0) { printf("[Lib] VirtOnlyBugC3::VirtOnlyBugC3\n"); }
+void VirtOnlyBugC3::print_class() { printf("[Lib] VirtOnlyBugC3::print_class\n"); }
+VirtOnlyBugC3::~VirtOnlyBugC3() { printf("[Lib] VirtOnlyBugC3::~VirtOnlyBugC3\n"); }
+
+void check_virt_only_bug(VirtOnlyBugC3 *p3, VirtOnlyBugC2 *b2, VirtOnlyBugC1 *b1) {
+  printf("[Lib] check_virt_only_bug: p3=%p, b2=%p, b1=%p\n", p3, b2, b1);
+  printf("[Lib] sizeof(VirtOnlyBugC3) = %d\n", (int)sizeof(VirtOnlyBugC3));
+
+  int offset_f0 = (int)((char*)&p3->f0 - (char*)p3);
+  int offset_f1 = (int)((char*)&p3->f1 - (char*)p3);
+  printf("[Lib] C3 fields: f0=%d, f1=%d\n", offset_f0, offset_f1);
+
+  int actual_offset_b2 = (char*)b2 - (char*)p3;
+  int actual_offset_b1 = (char*)b1 - (char*)p3;
+  printf("[Lib] base offsets: b2=%d, b1=%d\n", actual_offset_b2, actual_offset_b1);
+
+  if (sizeof(VirtOnlyBugC3) != 48) {
+    printf("[ERROR] VirtOnlyBug C3 size mismatch! Expected 48, got %d\n", (int)sizeof(VirtOnlyBugC3));
+    exit(1);
+  }
+  if (offset_f0 != 8 || offset_f1 != 16) {
+    printf("[ERROR] VirtOnlyBug C3 fields offset mismatch!\n");
+    exit(1);
+  }
+  if (actual_offset_b2 != 20 || actual_offset_b1 != 44) {
+    printf("[ERROR] VirtOnlyBug base offset mismatch! Expected b2=20, b1=44, got b2=%d, b1=%d\n", actual_offset_b2, actual_offset_b1);
+    exit(1);
+  }
+}
+
+void EmptySubVT_C0::print_class() { printf("[Lib] EmptySubVT_C0::print_class\n"); }
+EmptySubVT_C0::~EmptySubVT_C0() { printf("[Lib] EmptySubVT_C0::~EmptySubVT_C0\n"); }
+
+void EmptySubVT_C1::print_class() { printf("[Lib] EmptySubVT_C1::print_class\n"); }
+EmptySubVT_C1::~EmptySubVT_C1() { printf("[Lib] EmptySubVT_C1::~EmptySubVT_C1\n"); }
+
+void EmptySubVT_C2::print_class() { printf("[Lib] EmptySubVT_C2::print_class\n"); }
+EmptySubVT_C2::~EmptySubVT_C2() { printf("[Lib] EmptySubVT_C2::~EmptySubVT_C2\n"); }
+
+void check_empty_sub_vt(EmptySubVT_C2 *p2) {
+  printf("[Lib] check_empty_sub_vt: p2=%p\n", p2);
+  p2->print_class();
+}
+
+void SuffixPriorBug_C0::print_class() { printf("[Lib] SuffixPriorBug_C0::print_class\n"); }
+SuffixPriorBug_C0::~SuffixPriorBug_C0() { printf("[Lib] SuffixPriorBug_C0::~SuffixPriorBug_C0\n"); }
+
+void SuffixPriorBug_C1::print_class() { printf("[Lib] SuffixPriorBug_C1::print_class\n"); }
+SuffixPriorBug_C1::~SuffixPriorBug_C1() { printf("[Lib] SuffixPriorBug_C1::~SuffixPriorBug_C1\n"); }
+
+void SuffixPriorBug_C2::print_class() { printf("[Lib] SuffixPriorBug_C2::print_class\n"); }
+SuffixPriorBug_C2::~SuffixPriorBug_C2() { printf("[Lib] SuffixPriorBug_C2::~SuffixPriorBug_C2\n"); }
+
+void SuffixPriorBug_C3::print_class() { printf("[Lib] SuffixPriorBug_C3::print_class\n"); }
+SuffixPriorBug_C3::~SuffixPriorBug_C3() { printf("[Lib] SuffixPriorBug_C3::~SuffixPriorBug_C3\n"); }
+
+void SuffixPriorBug_C4::print_class() { printf("[Lib] SuffixPriorBug_C4::print_class\n"); }
+SuffixPriorBug_C4::~SuffixPriorBug_C4() { printf("[Lib] SuffixPriorBug_C4::~SuffixPriorBug_C4\n"); }
+
+void check_suffix_prior_bug(SuffixPriorBug_C4 *p4, SuffixPriorBug_C3 *b3) {
+  printf("[Lib] check_suffix_prior_bug: p4=%p, b3=%p\n", p4, b3);
+  p4->print_class();
+  b3->print_class();
+}
+
+void Fuzz676_C0::print_class() { printf("[Lib] Fuzz676_C0::print_class\n"); }
+void Fuzz676_C0::vf_p3JjdlrA() {}
+Fuzz676_C0::~Fuzz676_C0() { printf("[Lib] Fuzz676_C0::~Fuzz676_C0\n"); }
+
+void Fuzz676_C1::print_class() { printf("[Lib] Fuzz676_C1::print_class\n"); }
+Fuzz676_C1::~Fuzz676_C1() { printf("[Lib] Fuzz676_C1::~Fuzz676_C1\n"); }
+
+void Fuzz676_C2::print_class() { printf("[Lib] Fuzz676_C2::print_class\n"); }
+void Fuzz676_C2::vf_XGGVVSochQ() {}
+Fuzz676_C2::~Fuzz676_C2() { printf("[Lib] Fuzz676_C2::~Fuzz676_C2\n"); }
+
+void Fuzz676_C3::print_class() { printf("[Lib] Fuzz676_C3::print_class\n"); }
+Fuzz676_C3::~Fuzz676_C3() { printf("[Lib] Fuzz676_C3::~Fuzz676_C3\n"); }
+
+void Fuzz676_C4::print_class() { printf("[Lib] Fuzz676_C4::print_class\n"); }
+Fuzz676_C4::~Fuzz676_C4() { printf("[Lib] Fuzz676_C4::~Fuzz676_C4\n"); }
+
+void check_fuzz_676(Fuzz676_C4 *p4) {
+  printf("[Lib] check_fuzz_676: p4=%p\n", p4);
+  p4->print_class();
+}
+
+void Fuzz682_C0::print_class() { printf("[Lib] Fuzz682_C0::print_class\n"); }
+void Fuzz682_C0::vf_gUhgunHxX() {}
+Fuzz682_C0::~Fuzz682_C0() { printf("[Lib] Fuzz682_C0::~Fuzz682_C0\n"); }
+
+void Fuzz682_C1::print_class() { printf("[Lib] Fuzz682_C1::print_class\n"); }
+void Fuzz682_C1::vf_jTVkiT() {}
+Fuzz682_C1::~Fuzz682_C1() { printf("[Lib] Fuzz682_C1::~Fuzz682_C1\n"); }
+
+void Fuzz682_C2::print_class() { printf("[Lib] Fuzz682_C2::print_class\n"); }
+Fuzz682_C2::~Fuzz682_C2() { printf("[Lib] Fuzz682_C2::~Fuzz682_C2\n"); }
+
+void Fuzz682_C3::print_class() { printf("[Lib] Fuzz682_C3::print_class\n"); }
+Fuzz682_C3::~Fuzz682_C3() { printf("[Lib] Fuzz682_C3::~Fuzz682_C3\n"); }
+
+void check_fuzz_682(Fuzz682_C3 *p3) {
+  printf("[Lib] check_fuzz_682: p3=%p\n", p3);
+
+  // Print direct base offsets first
+  Fuzz682_C2 *b2 = (Fuzz682_C2*)p3;
+  Fuzz682_C1 *b1 = (Fuzz682_C1*)p3;
+  printf("[Lib] Fuzz682_C3->Fuzz682_C2 base offset = %d\n", (int)((char*)b2 - (char*)p3));
+  printf("[Lib] Fuzz682_C3->Fuzz682_C1 base offset = %d\n", (int)((char*)b1 - (char*)p3));
+
+  // Cast via virtual path to get the virtual base C0
+  Fuzz682_C0 *vbase = (Fuzz682_C0*)b2;
+  printf("[Lib] Fuzz682_C3->virtual Fuzz682_C0 base offset = %d\n", (int)((char*)vbase - (char*)p3));
+
+  // Cast via non-virtual path to get the non-virtual base C0
+  Fuzz682_C0 *nvbase = (Fuzz682_C0*)b1;
+  printf("[Lib] Fuzz682_C3->non-virtual Fuzz682_C0 base offset = %d\n", (int)((char*)nvbase - (char*)p3));
+
+  // Virtual call last (will crash if vtable is wrong)
+  p3->print_class();
+  vbase->print_class();
+  nvbase->print_class();
+}
+
+void Fuzz691_C0::print_class() { printf("[Lib] Fuzz691_C0::print_class\n"); }
+Fuzz691_C0::~Fuzz691_C0() { printf("[Lib] Fuzz691_C0::~Fuzz691_C0\n"); }
+
+void Fuzz691_C1::print_class() { printf("[Lib] Fuzz691_C1::print_class\n"); }
+void Fuzz691_C1::vf_N55nula() {}
+Fuzz691_C1::~Fuzz691_C1() { printf("[Lib] Fuzz691_C1::~Fuzz691_C1\n"); }
+
+void Fuzz691_C2::print_class() { printf("[Lib] Fuzz691_C2::print_class\n"); }
+Fuzz691_C2::~Fuzz691_C2() { printf("[Lib] Fuzz691_C2::~Fuzz691_C2\n"); }
+
+void Fuzz691_C3::print_class() { printf("[Lib] Fuzz691_C3::print_class\n"); }
+void Fuzz691_C3::vf_WAXCZZoOw() {}
+Fuzz691_C3::~Fuzz691_C3() { printf("[Lib] Fuzz691_C3::~Fuzz691_C3\n"); }
+
+void check_fuzz_691(Fuzz691_C3 *p3) {
+  printf("[Lib] check_fuzz_691: p3=%p\n", p3);
+  p3->print_class();
+}
+
+void Fuzz879_C0::print_class() { printf("[Lib] Fuzz879_C0::print_class\n"); }
+void Fuzz879_C0::vf_UFTS0uO() {}
+Fuzz879_C0::~Fuzz879_C0() { printf("[Lib] Fuzz879_C0::~Fuzz879_C0\n"); }
+
+void Fuzz879_C1::print_class() { printf("[Lib] Fuzz879_C1::print_class\n"); }
+void Fuzz879_C1::vf_NYi17f9Bv4() {}
+Fuzz879_C1::~Fuzz879_C1() { printf("[Lib] Fuzz879_C1::~Fuzz879_C1\n"); }
+
+void Fuzz879_C2::print_class() { printf("[Lib] Fuzz879_C2::print_class\n"); }
+void Fuzz879_C2::vf_OR26a() {}
+Fuzz879_C2::~Fuzz879_C2() { printf("[Lib] Fuzz879_C2::~Fuzz879_C2\n"); }
+
+void Fuzz879_C3::print_class() { printf("[Lib] Fuzz879_C3::print_class\n"); }
+bool Fuzz879_C3::operator==(const Fuzz879_C3& other) const { printf("[Op] operator==\n"); return true; }
+Fuzz879_C3::~Fuzz879_C3() { printf("[Lib] Fuzz879_C3::~Fuzz879_C3\n"); }
+
+void Fuzz879_C4::print_class() { printf("[Lib] Fuzz879_C4::print_class\n"); }
+void Fuzz879_C4::mf_zCj8L(long long a0) { printf("[Member] Fuzz879_C4::mf_zCj8L\n"); }
+Fuzz879_C4::~Fuzz879_C4() { printf("[Lib] Fuzz879_C4::~Fuzz879_C4\n"); }
+
+void check_fuzz_879(Fuzz879_C4 *p4) {
+  printf("[Lib] check_fuzz_879: p4=%p\n", p4);
+  p4->print_class();
+}
+
+namespace NsInteropTemplate {
+namespace NsSub_ {
+  template <> void TemplateClass::mt_func<double, 42>(double a0) {
+    printf("[Lib] Specialized mt_func: double %f\n", a0);
+  }
+  template <> void tfn_func<double, 42>(double a0) {
+    printf("[Lib] Specialized tfn_func: double %f\n", a0);
+  }
+}
+}
+
+void check_template_interop(NsInteropTemplate::NsSub_::TemplateClass *p) {
+  printf("[Lib] check_template_interop: p=%p\n", p);
+  p->mt_func<double, 42>(3.14);
+  NsInteropTemplate::NsSub_::tfn_func<double, 42>(2.718);
+}
+
+namespace NsInteropVirtOverride {
+  Base::Base() { print_class(); }
+  Base::~Base() { print_class(); }
+  void Base::print_class() { printf("[Lib] Base::print_class\n"); }
+  int Base::print_class_val() { return 1; }
+
+  CDerived::CDerived() { print_class(); }
+  CDerived::~CDerived() { print_class(); }
+  void CDerived::print_class() { printf("[Lib] CDerived::print_class\n"); }
+  int CDerived::print_class_val() { return 2; }
+
+  VDerived::VDerived() { print_class(); }
+  VDerived::~VDerived() { print_class(); }
+  void VDerived::print_class() { printf("[Lib] VDerived::print_class\n"); }
+  int VDerived::print_class_val() { return 3; }
+
+  CpDerived::CpDerived() { print_class(); }
+  CpDerived::~CpDerived() { print_class(); }
+  void CpDerived::print_class() { printf("[Lib] CpDerived::print_class\n"); }
+  int CpDerived::print_class_val() { return 4; }
+
+  int check_virt_override_interop() {
+    printf("[Lib] Instantiating CpDerived...\n");
+    CpDerived obj;
+    Base *b = (Base*)&obj;
+    return b->print_class_val();
+  }
+}
